@@ -1,0 +1,7 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Local experiment artifacts for n-body reproduction
+extern/physical_cyclic_animations/nbody_repro/outputs/
+extern/physical_cyclic_animations/nbody_repro/__pycache__/
