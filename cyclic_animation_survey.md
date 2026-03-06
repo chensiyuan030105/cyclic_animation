@@ -88,3 +88,27 @@ Use this narrative order:
 - WalkTheDog (2024): https://arxiv.org/abs/2407.18946
 - AMASS dataset: https://arxiv.org/abs/1904.03278
 - 100STYLE dataset: https://www.ianxmason.com/100style/
+
+## 9. Additional CG References (Including Albert Chern)
+
+### 9.1 Cyclic Animation and Phase-Based Motion in CG
+
+- Jia, Wang, Li, Chern. *Physical Cyclic Animations* (PACM CGIT / SCA 2023): https://doi.org/10.1145/3606938
+- Holden, Saito, Komura. *A Deep Learning Framework for Character Motion Synthesis and Editing* (TOG 2016): https://doi.org/10.1145/2897824.2925975
+- Holden, Komura, Saito. *Phase-Functioned Neural Networks for Character Control* (TOG 2017): https://doi.org/10.1145/3072959.3073663
+- Starke et al. *Local Motion Phases for Learning Multi-Contact Character Movements* (TOG 2020): https://doi.org/10.1145/3386569.3392450
+- Starke, Mason, Komura. *DeepPhase: Periodic Autoencoders for Learning Motion Phase Manifolds* (TOG 2022): https://doi.org/10.1145/3528223.3530178
+
+### 9.2 Albert Chern: Geometry, Fluids, and Physics-Based Graphics
+
+- Chern et al. *Schrödinger's Smoke* (TOG / SIGGRAPH 2016): https://doi.org/10.1145/2897824.2925868
+- Chern et al. *Inside Fluids: Clebsch Maps for Visualization and Processing* (TOG / SIGGRAPH 2017): https://doi.org/10.1145/3072959.3073591
+- Chern et al. *Shape from Metric* (TOG / SIGGRAPH 2018): https://doi.org/10.1145/3197517.3201276
+- Nabizadeh et al. *Covector Fluids* (TOG / SIGGRAPH 2022): https://doi.org/10.1145/3528223.3530120
+- Ishida, Wojtan, Chern. *Hidden Degrees of Freedom in Implicit Vortex Filaments* (TOG / SIGGRAPH Asia 2022): https://doi.org/10.1145/3550454.3555459
+- Nabizadeh et al. *Fluid Implicit Particles on Coadjoint Orbits* (TOG / SIGGRAPH Asia 2024): https://doi.org/10.1145/3687970
+
+### 9.3 Author/Project Index
+
+- Albert Chern project/publication list: https://cseweb.ucsd.edu/~alchern/projects/
+- Physical Cyclic Animations project page (code/video/bib): https://shiyang-jia.com/physical_cyclic_animations/
