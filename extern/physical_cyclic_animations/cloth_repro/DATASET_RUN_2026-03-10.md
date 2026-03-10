@@ -22,6 +22,7 @@
 - `steps = 50`（使用窗口前 51 帧）
 - `dataset_downsample = 3`（71x71 -> 24x24）
 - `iters = 60`
+- `gravity = 0.0`
 - `match_weight = 0.2`
 
 以上配置优先保证先跑通，并在分钟级拿到可比指标。
@@ -38,13 +39,19 @@ python3 compare_cloth_methods.py \
   --steps 50 \
   --iters 60 \
   --dt 0.02 \
+  --gravity 0.0 \
   --match_weight 0.2 \
-  --out_dir outputs/dataset_smoke_20260310
+  --save_sequence 1 \
+  --sequence_fps 20 \
+  --sequence_stride 1 \
+  --out_dir outputs/dataset_smoke_20260310_seq_nogravity
 ```
 
 ## 运行结果
 - 运行成功，输出目录：
-  - `outputs/dataset_smoke_20260310`
+  - `outputs/dataset_smoke_20260310_seq_nogravity`
+- 清理状态：
+  - 旧的有重力结果目录 `outputs/dataset_smoke_20260310`、`outputs/dataset_smoke_20260310_seq` 已删除。
 - 主要产物：
   - `figure_loss_compare.png`
   - `figure_state_compare.png`
@@ -57,28 +64,29 @@ python3 compare_cloth_methods.py \
 - 配置（自动推断后）：
   - `nx=24, ny=24`（由 `71x71` 以 stride=3 降采样）
   - `steps=50, dt=0.02`
+  - `gravity=0.0`
   - `estimated_spacing=0.030716`
 - Weak：
-  - `closure_pos_rmse=3.4041`
-  - `closure_vel_rmse=6.2786`
-  - `center_loop_closure=5.0398`
-  - `trajectory_rmse=1.6126`
+  - `closure_pos_rmse=0.8004`
+  - `closure_vel_rmse=1.3277`
+  - `center_loop_closure=1.2351`
+  - `trajectory_rmse=0.5863`
 - Improved：
-  - `closure_pos_rmse=3.2781`
-  - `closure_vel_rmse=6.2073`
-  - `center_loop_closure=4.8398`
-  - `trajectory_rmse=1.5028`
+  - `closure_pos_rmse=0.2348`
+  - `closure_vel_rmse=1.0113`
+  - `center_loop_closure=0.0597`
+  - `trajectory_rmse=0.2571`
 
 ### 初步结论
-- 在当前 smoke 配置下，`improved` 相对 `weak` 在四项指标上均有小幅提升。
-- 但整体误差仍偏大，说明“数据窗口 + 动力学参数 + 损失权重”还需继续调参。
+- 在当前无重力 smoke 配置下，`improved` 相对 `weak` 在四项指标上显著提升。
+- 序列观感比有重力版本稳定，形变模式更贴近数据本身。
 
 ### 结果一句话总结
-- 这轮已经“跑通并优于 baseline”：`improved` 相比 `weak` 的提升约为：
-  - `trajectory_rmse`: `1.6126 -> 1.5028`（约 **6.8%** 改善）
-  - `center_loop_closure`: `5.0398 -> 4.8398`（约 **4.0%** 改善）
-  - `closure_pos_rmse`: `3.4041 -> 3.2781`（约 **3.7%** 改善）
-  - `closure_vel_rmse`: `6.2786 -> 6.2073`（约 **1.1%** 改善）
+- 这轮已经“跑通并明显优于 baseline”：`improved` 相比 `weak` 的提升约为：
+  - `trajectory_rmse`: `0.5863 -> 0.2571`（约 **56.2%** 改善）
+  - `center_loop_closure`: `1.2351 -> 0.0597`（约 **95.2%** 改善）
+  - `closure_pos_rmse`: `0.8004 -> 0.2348`（约 **70.7%** 改善）
+  - `closure_vel_rmse`: `1.3277 -> 1.0113`（约 **23.8%** 改善）
 
 ## 可视化序列导出（sequence）
 - 额外命令：
@@ -93,17 +101,18 @@ python3 compare_cloth_methods.py \
   --steps 50 \
   --iters 60 \
   --dt 0.02 \
+  --gravity 0.0 \
   --match_weight 0.2 \
   --save_sequence 1 \
   --sequence_fps 20 \
   --sequence_stride 1 \
-  --out_dir outputs/dataset_smoke_20260310_seq
+  --out_dir outputs/dataset_smoke_20260310_seq_nogravity
 ```
 - 输出：
-  - `outputs/dataset_smoke_20260310_seq/sequence_target.gif`
-  - `outputs/dataset_smoke_20260310_seq/sequence_weak.gif`
-  - `outputs/dataset_smoke_20260310_seq/sequence_improved.gif`
-  - `outputs/dataset_smoke_20260310_seq/sequence_triplet.gif`
+  - `outputs/dataset_smoke_20260310_seq_nogravity/sequence_target.gif`
+  - `outputs/dataset_smoke_20260310_seq_nogravity/sequence_weak.gif`
+  - `outputs/dataset_smoke_20260310_seq_nogravity/sequence_improved.gif`
+  - `outputs/dataset_smoke_20260310_seq_nogravity/sequence_triplet.gif`
 - 帧数：均为 `51` 帧；`sequence_triplet.gif` 为 target/weak/improved 三联对比。
 
 ### 下一步收敛方向

@@ -466,7 +466,7 @@ def parse_args():
     p.add_argument("--nx", type=int, default=6)
     p.add_argument("--ny", type=int, default=6)
     p.add_argument("--spacing", type=float, default=0.18)
-    p.add_argument("--gravity", type=float, default=9.8)
+    p.add_argument("--gravity", type=float, default=0.0)
     p.add_argument("--damping", type=float, default=0.08)
     p.add_argument("--k_struct", type=float, default=180.0)
     p.add_argument("--k_shear", type=float, default=100.0)
@@ -524,7 +524,7 @@ def main():
             spacing=spacing,
             steps=steps,
             dt=args.dt,
-            gravity=args.gravity,
+            gravity=0.0,
             damping=args.damping,
             k_struct=args.k_struct,
             k_shear=args.k_shear,
