@@ -33,6 +33,7 @@ class DMDConfig:
     gif_fps: int
     gif_stride: int
     project_periodic: bool
+    mode_group_topk: int
 
 
 def load_positions(dataset_path: str, dataset_key: str) -> np.ndarray:
@@ -156,10 +157,51 @@ def project_eigs_to_period(eigvals: np.ndarray, period: int, radius_eps: float):
     return rho_proj * np.exp(1j * theta_proj)
 
 
+def build_mode_groups(eigvals: np.ndarray, conj_tol: float = 1e-3, imag_tol: float = 1e-8):
+    n = eigvals.shape[0]
+    used = np.zeros(n, dtype=bool)
+    groups: list[list[int]] = []
+    for i in range(n):
+        if used[i]:
+            continue
+        lam = eigvals[i]
+        if abs(np.imag(lam)) <= imag_tol:
+            groups.append([int(i)])
+            used[i] = True
+            continue
+        target = np.conj(lam)
+        cands = np.where(~used)[0]
+        cands = cands[cands != i]
+        if cands.size == 0:
+            groups.append([int(i)])
+            used[i] = True
+            continue
+        j = int(cands[np.argmin(np.abs(eigvals[cands] - target))])
+        if abs(eigvals[j] - target) < conj_tol:
+            groups.append(sorted([int(i), int(j)]))
+            used[i] = True
+            used[j] = True
+        else:
+            groups.append([int(i)])
+            used[i] = True
+    return groups
+
+
+def rank_mode_groups(phi: np.ndarray, coeff: np.ndarray, groups: list[list[int]]):
+    ranked = []
+    for gid, g in enumerate(groups):
+        g_idx = np.array(g, dtype=int)
+        contrib = phi[:, g_idx] @ coeff[g_idx]
+        score = float(np.linalg.norm(contrib))
+        ranked.append((gid, score, g))
+    ranked.sort(key=lambda x: x[1], reverse=True)
+    return ranked
+
+
 def rollout_delay_dmd(
     phi: np.ndarray,
     eigvals_proj: np.ndarray,
-    y0: np.ndarray,
+    coeff: np.ndarray,
     z_seed_txr: np.ndarray,
     delay: int,
     rollout_frames: int,
@@ -171,10 +213,9 @@ def rollout_delay_dmd(
     z_out = np.zeros((rollout_frames, r), dtype=np.float64)
     z_out[: delay - 1] = z_seed_txr[: delay - 1]
 
-    b = np.linalg.pinv(phi) @ y0
     n_states = rollout_frames - delay + 1
     for n in range(n_states):
-        y_n = phi @ ((eigvals_proj**n) * b)
+        y_n = phi @ ((eigvals_proj**n) * coeff)
         y_n = np.real(y_n)
         frame_idx = n + delay - 1
         z_out[frame_idx] = y_n[-r:]
@@ -313,6 +354,12 @@ def parse_args():
     p.add_argument("--radius_eps", type=float, default=0.0, help="0 means project all |lambda| to 1")
     p.add_argument("--project_periodic", type=int, default=1, help="1: periodic spectrum projection, 0: raw DMD")
     p.add_argument("--reconstruct_train", type=int, default=0, help="1: rollout length equals train_frames")
+    p.add_argument(
+        "--mode_group_topk",
+        type=int,
+        default=0,
+        help="0 means use all modal groups; 1 means keep only the most energetic modal group",
+    )
     p.add_argument("--axis", choices=["xy", "xz", "yz"], default="xz")
     p.add_argument("--save_sequence", type=int, default=1)
     p.add_argument("--gif_fps", type=int, default=20)
@@ -337,6 +384,7 @@ def main():
         gif_fps=args.gif_fps,
         gif_stride=max(1, args.gif_stride),
         project_periodic=bool(args.project_periodic),
+        mode_group_topk=max(0, int(args.mode_group_topk)),
     )
 
     pos_all = load_positions(args.dataset, args.dataset_key)
@@ -365,13 +413,30 @@ def main():
     else:
         eigvals_used = eigvals.copy()
 
+    coeff_full = np.linalg.pinv(phi) @ y[0]
+    mode_groups = build_mode_groups(eigvals_used)
+    ranked_groups = rank_mode_groups(phi, coeff_full, mode_groups)
+    selected_mode_indices = list(range(len(eigvals_used)))
+    selected_group_ids = [r[0] for r in ranked_groups]
+    coeff_used = coeff_full.copy()
+    if cfg.mode_group_topk > 0:
+        topk = min(cfg.mode_group_topk, len(ranked_groups))
+        keep_groups = ranked_groups[:topk]
+        keep = set()
+        for _, _, g in keep_groups:
+            keep.update(int(i) for i in g)
+        selected_mode_indices = sorted(keep)
+        selected_group_ids = [int(gid) for gid, _, _ in keep_groups]
+        coeff_used = np.zeros_like(coeff_full)
+        coeff_used[selected_mode_indices] = coeff_full[selected_mode_indices]
+
     rollout_frames = min(cfg.rollout_frames, pos.shape[0] + 2000)
     if args.reconstruct_train:
         rollout_frames = pos.shape[0]
     z_pred = rollout_delay_dmd(
         phi=phi,
         eigvals_proj=eigvals_used,
-        y0=y[0],
+        coeff=coeff_used,
         z_seed_txr=z,
         delay=cfg.delay,
         rollout_frames=rollout_frames,
@@ -459,6 +524,15 @@ def main():
         "mode": {
             "project_periodic": bool(cfg.project_periodic),
             "reconstruct_train": bool(args.reconstruct_train),
+            "mode_group_topk": int(cfg.mode_group_topk),
+            "n_mode_groups_total": int(len(mode_groups)),
+            "n_modes_selected": int(len(selected_mode_indices)),
+            "selected_group_ids": selected_group_ids,
+            "selected_mode_indices": selected_mode_indices,
+            "top_group_scores": [
+                {"group_id": int(gid), "score": float(score), "indices": [int(i) for i in g]}
+                for gid, score, g in ranked_groups[:10]
+            ],
         },
         "outputs": {
             "npz": npz_out,
