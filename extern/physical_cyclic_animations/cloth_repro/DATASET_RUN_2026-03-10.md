@@ -80,6 +80,32 @@ python3 compare_cloth_methods.py \
   - `closure_pos_rmse`: `3.4041 -> 3.2781`（约 **3.7%** 改善）
   - `closure_vel_rmse`: `6.2786 -> 6.2073`（约 **1.1%** 改善）
 
+## 可视化序列导出（sequence）
+- 额外命令：
+```bash
+cd /workspace/cyclic_animation/extern/physical_cyclic_animations/cloth_repro
+python3 compare_cloth_methods.py \
+  --dataset /workspace/cyclic_animation/dataset/cloth_flag_flutter_square5K_T200_NxTx3.npy \
+  --dataset_axis xz \
+  --dataset_start 75 \
+  --dataset_len 60 \
+  --dataset_downsample 3 \
+  --steps 50 \
+  --iters 60 \
+  --dt 0.02 \
+  --match_weight 0.2 \
+  --save_sequence 1 \
+  --sequence_fps 20 \
+  --sequence_stride 1 \
+  --out_dir outputs/dataset_smoke_20260310_seq
+```
+- 输出：
+  - `outputs/dataset_smoke_20260310_seq/sequence_target.gif`
+  - `outputs/dataset_smoke_20260310_seq/sequence_weak.gif`
+  - `outputs/dataset_smoke_20260310_seq/sequence_improved.gif`
+  - `outputs/dataset_smoke_20260310_seq/sequence_triplet.gif`
+- 帧数：均为 `51` 帧；`sequence_triplet.gif` 为 target/weak/improved 三联对比。
+
 ### 下一步收敛方向
 1. 调整窗口：尝试 `dataset_start=100~140`，优先选更平稳段。
 2. 提高轨迹约束：增大 `match_weight`（如 `0.5~1.0`）并观察 `trajectory_rmse`。

@@ -11,6 +11,7 @@ import csv
 import json
 import os
 from dataclasses import dataclass
+from typing import Iterable
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -219,6 +220,117 @@ def draw_mesh(ax, pos_np: np.ndarray, i_np: np.ndarray, j_np: np.ndarray, color:
         ax.plot([xa, xb], [ya, yb], color=color, alpha=alpha, linewidth=lw)
 
 
+def _compute_bounds(traces: Iterable[np.ndarray], pad_ratio: float = 0.05):
+    pts = np.concatenate([t.reshape(-1, 2) for t in traces], axis=0)
+    xmin, ymin = pts.min(axis=0)
+    xmax, ymax = pts.max(axis=0)
+    dx = max(1e-6, xmax - xmin)
+    dy = max(1e-6, ymax - ymin)
+    xmin -= dx * pad_ratio
+    xmax += dx * pad_ratio
+    ymin -= dy * pad_ratio
+    ymax += dy * pad_ratio
+    return float(xmin), float(xmax), float(ymin), float(ymax)
+
+
+def _world_to_pixel(pos: np.ndarray, bounds, w: int, h: int, margin: int):
+    xmin, xmax, ymin, ymax = bounds
+    sx = (w - 2 * margin) / max(1e-6, (xmax - xmin))
+    sy = (h - 2 * margin) / max(1e-6, (ymax - ymin))
+    x = margin + (pos[:, 0] - xmin) * sx
+    y = h - margin - (pos[:, 1] - ymin) * sy
+    return np.stack([x, y], axis=-1)
+
+
+def _draw_mesh_image(
+    pos: np.ndarray,
+    i_np: np.ndarray,
+    j_np: np.ndarray,
+    bounds,
+    size=(640, 480),
+    margin: int = 24,
+    line_color=(30, 120, 220),
+    bg=(255, 255, 255),
+    title: str = "",
+):
+    w, h = size
+    img = Image.new("RGB", (w, h), bg)
+    draw = ImageDraw.Draw(img)
+    pxy = _world_to_pixel(pos, bounds, w, h, margin)
+    for a, b in zip(i_np, j_np):
+        xa, ya = pxy[a]
+        xb, yb = pxy[b]
+        draw.line([(float(xa), float(ya)), (float(xb), float(yb))], fill=line_color, width=1)
+    if title:
+        draw.text((8, 8), title, fill=(0, 0, 0))
+    return img
+
+
+def save_sequence_gif(
+    out_path: str,
+    trace: np.ndarray,
+    i_np: np.ndarray,
+    j_np: np.ndarray,
+    bounds,
+    fps: int,
+    title_prefix: str,
+):
+    duration = int(round(1000.0 / max(1, fps)))
+    frames = []
+    for t in range(trace.shape[0]):
+        title = f"{title_prefix}  frame {t}"
+        frames.append(_draw_mesh_image(trace[t], i_np, j_np, bounds=bounds, title=title))
+    frames[0].save(
+        out_path,
+        save_all=True,
+        append_images=frames[1:],
+        duration=duration,
+        loop=0,
+        optimize=False,
+    )
+
+
+def save_triplet_sequence_gif(
+    out_path: str,
+    weak_trace: np.ndarray,
+    improved_trace: np.ndarray,
+    i_np: np.ndarray,
+    j_np: np.ndarray,
+    bounds,
+    fps: int,
+    target_trace: np.ndarray | None = None,
+):
+    duration = int(round(1000.0 / max(1, fps)))
+    frames = []
+    n = weak_trace.shape[0]
+    for t in range(n):
+        if target_trace is not None:
+            left = _draw_mesh_image(
+                target_trace[t], i_np, j_np, bounds=bounds, size=(480, 420), title=f"target  frame {t}"
+            )
+        else:
+            left = Image.new("RGB", (480, 420), (245, 245, 245))
+            d = ImageDraw.Draw(left)
+            d.text((12, 12), f"no target trace  frame {t}", fill=(0, 0, 0))
+        mid = _draw_mesh_image(weak_trace[t], i_np, j_np, bounds=bounds, size=(480, 420), title=f"weak  frame {t}")
+        right = _draw_mesh_image(
+            improved_trace[t], i_np, j_np, bounds=bounds, size=(480, 420), title=f"improved  frame {t}"
+        )
+        canvas = Image.new("RGB", (left.width + mid.width + right.width + 16, 420), (255, 255, 255))
+        canvas.paste(left, (0, 0))
+        canvas.paste(mid, (left.width + 8, 0))
+        canvas.paste(right, (left.width + mid.width + 16, 0))
+        frames.append(canvas)
+    frames[0].save(
+        out_path,
+        save_all=True,
+        append_images=frames[1:],
+        duration=duration,
+        loop=0,
+        optimize=False,
+    )
+
+
 def run_method(
     method: str,
     cfg: ClothConfig,
@@ -325,6 +437,7 @@ def run_method(
         "history": history,
         "pos_final": pos_t.detach().cpu().numpy(),
         "center_trace": center_trace.detach().cpu().numpy(),
+        "pos_trace": pos_trace.detach().cpu().numpy(),
         "metrics": metrics,
     }
 
@@ -375,6 +488,9 @@ def parse_args():
     )
     p.add_argument("--dataset_downsample", type=int, default=1, help="Grid downsample stride for dataset mode")
     p.add_argument("--match_weight", type=float, default=0.2, help="Weight for trajectory matching loss")
+    p.add_argument("--save_sequence", type=int, default=1, help="Whether to export sequence GIFs")
+    p.add_argument("--sequence_fps", type=int, default=20)
+    p.add_argument("--sequence_stride", type=int, default=1, help="Frame stride used for sequence export")
     return p.parse_args()
 
 
@@ -487,8 +603,7 @@ def main():
         "improved": improved["metrics"],
         "dataset": dataset_info,
     }
-    with open(os.path.join(args.out_dir, "summary_metrics.json"), "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2)
+    summary_path = os.path.join(args.out_dir, "summary_metrics.json")
 
     plt.figure(figsize=(7.5, 4.8))
     xw = [d["iter"] for d in weak["history"]]
@@ -538,11 +653,88 @@ def main():
     panel_png = os.path.join(args.out_dir, "figure_paper_style_panel.png")
     make_panel(loss_png, state_png, panel_png)
 
+    sequence_outputs = []
+    if args.save_sequence:
+        seq_stride = max(1, int(args.sequence_stride))
+        weak_trace = weak["pos_trace"][::seq_stride]
+        improved_trace = improved["pos_trace"][::seq_stride]
+        target_np = target_trace.detach().cpu().numpy()[::seq_stride] if target_trace is not None else None
+
+        traces_for_bounds = [weak_trace, improved_trace]
+        if target_np is not None:
+            traces_for_bounds.append(target_np)
+        bounds = _compute_bounds(traces_for_bounds)
+
+        weak_gif = os.path.join(args.out_dir, "sequence_weak.gif")
+        save_sequence_gif(
+            out_path=weak_gif,
+            trace=weak_trace,
+            i_np=i_np,
+            j_np=j_np,
+            bounds=bounds,
+            fps=args.sequence_fps,
+            title_prefix="weak",
+        )
+        sequence_outputs.append(weak_gif)
+
+        improved_gif = os.path.join(args.out_dir, "sequence_improved.gif")
+        save_sequence_gif(
+            out_path=improved_gif,
+            trace=improved_trace,
+            i_np=i_np,
+            j_np=j_np,
+            bounds=bounds,
+            fps=args.sequence_fps,
+            title_prefix="improved",
+        )
+        sequence_outputs.append(improved_gif)
+
+        if target_np is not None:
+            target_gif = os.path.join(args.out_dir, "sequence_target.gif")
+            save_sequence_gif(
+                out_path=target_gif,
+                trace=target_np,
+                i_np=i_np,
+                j_np=j_np,
+                bounds=bounds,
+                fps=args.sequence_fps,
+                title_prefix="target",
+            )
+            sequence_outputs.append(target_gif)
+
+        triplet_gif = os.path.join(args.out_dir, "sequence_triplet.gif")
+        save_triplet_sequence_gif(
+            out_path=triplet_gif,
+            weak_trace=weak_trace,
+            improved_trace=improved_trace,
+            i_np=i_np,
+            j_np=j_np,
+            bounds=bounds,
+            fps=args.sequence_fps,
+            target_trace=target_np,
+        )
+        sequence_outputs.append(triplet_gif)
+
+        summary["sequence"] = {
+            "enabled": True,
+            "fps": int(args.sequence_fps),
+            "stride": int(seq_stride),
+            "n_frames": int(weak_trace.shape[0]),
+            "files": sequence_outputs,
+        }
+    else:
+        summary["sequence"] = {"enabled": False}
+
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2)
+
     print("Done. Outputs:")
     print(f"- {loss_png}")
     print(f"- {state_png}")
     print(f"- {panel_png}")
-    print(f"- {args.out_dir}/summary_metrics.json")
+    for p in sequence_outputs:
+        print(f"- {p}")
+    print(f"- {summary_path}")
     print("\nSummary metrics:")
     print(json.dumps(summary, indent=2))
 
