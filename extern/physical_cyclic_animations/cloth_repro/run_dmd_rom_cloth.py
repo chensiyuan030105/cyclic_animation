@@ -32,6 +32,7 @@ class DMDConfig:
     axis: str
     gif_fps: int
     gif_stride: int
+    project_periodic: bool
 
 
 def load_positions(dataset_path: str, dataset_key: str) -> np.ndarray:
@@ -310,6 +311,8 @@ def parse_args():
     p.add_argument("--dmd_rank", type=int, default=120, help="0 means full rank in delay subspace")
     p.add_argument("--period", type=int, default=0, help="0 means auto-estimate from latent signal")
     p.add_argument("--radius_eps", type=float, default=0.0, help="0 means project all |lambda| to 1")
+    p.add_argument("--project_periodic", type=int, default=1, help="1: periodic spectrum projection, 0: raw DMD")
+    p.add_argument("--reconstruct_train", type=int, default=0, help="1: rollout length equals train_frames")
     p.add_argument("--axis", choices=["xy", "xz", "yz"], default="xz")
     p.add_argument("--save_sequence", type=int, default=1)
     p.add_argument("--gif_fps", type=int, default=20)
@@ -333,6 +336,7 @@ def main():
         axis=args.axis,
         gif_fps=args.gif_fps,
         gif_stride=max(1, args.gif_stride),
+        project_periodic=bool(args.project_periodic),
     )
 
     pos_all = load_positions(args.dataset, args.dataset_key)
@@ -355,12 +359,18 @@ def main():
         period = cfg.period
     else:
         period = estimate_period(z[:, 0])
-    eigvals_proj = project_eigs_to_period(eigvals, period=period, radius_eps=cfg.radius_eps)
+
+    if cfg.project_periodic:
+        eigvals_used = project_eigs_to_period(eigvals, period=period, radius_eps=cfg.radius_eps)
+    else:
+        eigvals_used = eigvals.copy()
 
     rollout_frames = min(cfg.rollout_frames, pos.shape[0] + 2000)
+    if args.reconstruct_train:
+        rollout_frames = pos.shape[0]
     z_pred = rollout_delay_dmd(
         phi=phi,
-        eigvals_proj=eigvals_proj,
+        eigvals_proj=eigvals_used,
         y0=y[0],
         z_seed_txr=z,
         delay=cfg.delay,
@@ -443,8 +453,12 @@ def main():
         },
         "spectrum": {
             "abs_lambda_mean_before": float(np.mean(np.abs(eigvals))),
-            "abs_lambda_mean_after": float(np.mean(np.abs(eigvals_proj))),
-            "abs_lambda_max_after": float(np.max(np.abs(eigvals_proj))),
+            "abs_lambda_mean_after": float(np.mean(np.abs(eigvals_used))),
+            "abs_lambda_max_after": float(np.max(np.abs(eigvals_used))),
+        },
+        "mode": {
+            "project_periodic": bool(cfg.project_periodic),
+            "reconstruct_train": bool(args.reconstruct_train),
         },
         "outputs": {
             "npz": npz_out,
